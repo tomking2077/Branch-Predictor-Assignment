@@ -1,0 +1,30 @@
+# C/C++ build products
+*.o
+*.obj
+*.a
+*.so
+*.d
+a.out
+cbp2-infrastructure-v2/src/predict
+cbp2-infrastructure-v2/src/predict_extra_credit
+cbp2-infrastructure-v2/src/appendix_b_check
+cbp2-infrastructure-v2/src/compress/ct
+
+# LaTeX intermediates. report.pdf stays tracked.
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+
+# Editor and OS files
+*~
+*.swp
+.DS_Store
+
+# Downloaded copy of the extracted infrastructure
+cbp2-infrastructure-v2.zip
