@@ -5,12 +5,12 @@
 *.so
 *.d
 a.out
-cbp2-infrastructure-v2/src/predict
-cbp2-infrastructure-v2/src/predict_extra_credit
-cbp2-infrastructure-v2/src/appendix_b_check
-cbp2-infrastructure-v2/src/compress/ct
+src/predict
+src/predict_extra_credit
+src/appendix_b_check
+src/compress/ct
 
-# LaTeX intermediates. report.pdf stays tracked.
+# LaTeX intermediates. latex/report.pdf stays tracked.
 *.aux
 *.bbl
 *.blg
@@ -27,4 +27,4 @@ cbp2-infrastructure-v2/src/compress/ct
 .DS_Store
 
 # Downloaded copy of the extracted infrastructure
-cbp2-infrastructure-v2.zip
+reference/cbp2-infrastructure-v2.zip

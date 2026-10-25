@@ -1,32 +1,33 @@
 # Branch Predictor Assignment
 
-The predictor is built on the CBP2 simulation infrastructure in `cbp2-infrastructure-v2/`. That tree is the original codebase. Its `README` and `doc/index.html` describe the trace format, the driver, and how a predictor class is called. The work for this assignment is on top of that: `src/my_predictor.h` implements the Appendix B hybrid predictor, and `src/appendix_b_check.cc` checks it against the worked example.
+The predictor is built on the infrastructure from the Championship Branch Prediction competition. The September 14, 2006 update of that tree dropped the extra traces and added `src/compress`, the engine that pre-processed the traces shipped here. `doc/index.html` documents the trace format, the driver, and how a predictor class is called. The work for this assignment is on top of that. `src/my_predictor.h` has two hybrid predictors. `pm_predictor` is the Appendix B worksheet, and `appendix_b_check.cc` checks it against the worked example. `scaled_pm_predictor` is the same rule at Pentium M sizes (4096 bimodal counters, 512 sets, 2 ways, 15-bit history). `predict.cc` runs that class on the traces.
 
 ## Directory structure
 
 ```
-report.tex, report.pdf          assignment write-up and results
-cbp2-infrastructure-v2/
-  README                        original infrastructure notes
-  doc/index.html                original driver and predictor API
-  run, run_extra                csh scripts that score every trace
-  examples/appendix-b/          expected tables for the worked example
-    hybrid.csv                  one row per branch (PC, outcome, predictions)
-    local.csv                   16 bimodal counters at each step
-    global.csv                  valid, tag, counter, and LRU for each way
-  src/
-    my_predictor.h              bimodal table, history register, 2-way global table
-    appendix_b_check.cc         reads the three CSVs and checks the predictor
-    predict.cc                  trace driver; prints MPKI
-    Makefile
-  traces/                       one .trace.bz2 per benchmark
+README.md                     how to build and run this assignment
+latex/                        assignment write-up (report.tex, report.pdf)
+reference/                    assignment PDF, paper, and infrastructure archive
+doc/index.html                original driver and predictor API
+run, run_extra                csh scripts that score every trace
+examples/appendix-b/          expected tables for the worked example
+  hybrid.csv                  one row per branch (PC, outcome, predictions)
+  local.csv                   16 bimodal counters at each step
+  global.csv                  valid, tag, counter, and LRU for each way
+src/
+  my_predictor.h              Appendix B predictor and the scaled trace predictor
+  appendix_b_check.cc         reads the three CSVs and checks the predictor
+  predict.cc                  trace driver; prints MPKI
+  Makefile
+  compress/                   engine that pre-processed the traces
+traces/                       one .trace.bz2 per benchmark
 ```
 
 `make` writes `predict` and `appendix_b_check` into `src/`. Those binaries are build products.
 
 ## Run the predictor
 
-From `cbp2-infrastructure-v2/src`:
+From `src`:
 
 ```bash
 make
@@ -38,14 +39,12 @@ The program prints mispredictions per kilo-instruction for that trace. Each trac
 To score every trace, the infrastructure script is csh:
 
 ```bash
-cd cbp2-infrastructure-v2
 csh ./run traces
 ```
 
 If `csh` is not installed, the same loop in bash is:
 
 ```bash
-cd cbp2-infrastructure-v2
 sum=0; n=0
 while IFS= read -r t; do
   printf "%-50s\t" "$t"
@@ -66,7 +65,7 @@ echo
 The checker replays the 22-branch Appendix B example. It reads `examples/appendix-b/` and compares the history register, the XOR index, the bimodal counters, and the global table.
 
 ```bash
-cd cbp2-infrastructure-v2/src
+cd src
 make appendix_b_check
 ./appendix_b_check
 ```

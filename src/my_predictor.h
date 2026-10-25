@@ -177,6 +177,106 @@ public:
 
 };
 
+// Trace predictor. Same selection and update rules as pm_predictor, at the
+// Pentium M table sizes. A 15-bit outcome history stands in for the path
+// register. address[16:2] is XORed with that history; bits [14:6] of the
+// result select one of 512 sets and bits [5:0] are the tag. The bimodal
+// table has 4096 counters indexed by address[11:0]. Two ways, as allowed
+// in place of the Pentium M's four.
+class scaled_pm_predictor : public branch_predictor {
+public:
+	enum { BIMODAL_SIZE = 4096, GSETS = 512, GWAYS = 2, HIST_BITS = 15, TAG_BITS = 6 };
+
+	struct gentry {
+		unsigned char valid;
+		unsigned char tag;
+		unsigned char ctr;
+		unsigned char lru;	// 0 = MRU, 1 = LRU
+	};
+
+	pm_update u;
+	branch_info bi;
+	unsigned int history;
+	unsigned char bimodal[BIMODAL_SIZE];
+	gentry global[GWAYS][GSETS];
+
+	static void sat_update (unsigned char &c, bool taken) {
+		if (taken) {
+			if (c < 3) c++;
+		} else {
+			if (c > 0) c--;
+		}
+	}
+
+	void touch_lru (unsigned int set, int way) {
+		global[way][set].lru = 0;
+		global[way ^ 1][set].lru = 1;
+	}
+
+	int alloc_way (unsigned int set) {
+		for (int w = 0; w < GWAYS; w++) {
+			if (!global[w][set].valid) return w;
+		}
+		return global[0][set].lru ? 0 : 1;
+	}
+
+	scaled_pm_predictor (void) : history(0) {
+		memset (bimodal, 0, sizeof (bimodal));
+		memset (global, 0, sizeof (global));
+	}
+
+	branch_update *predict (branch_info & b) {
+		bi = b;
+		u.global_hit = false;
+		u.global_way = -1;
+		u.ghr = history;
+		u.target_prediction (0);
+
+		if (!(b.br_flags & BR_CONDITIONAL)) {
+			u.direction_prediction (true);
+			return &u;
+		}
+
+		unsigned int bits = (b.address >> 2) & ((1u << HIST_BITS) - 1);
+		u.bimodal_index = b.address & (BIMODAL_SIZE - 1);
+		u.xor_bits = bits ^ history;
+		u.gset = (u.xor_bits >> TAG_BITS) & (GSETS - 1);
+		u.gtag = u.xor_bits & ((1u << TAG_BITS) - 1);
+
+		bool local_pred = bimodal[u.bimodal_index] >> 1;
+
+		for (int w = 0; w < GWAYS; w++) {
+			if (global[w][u.gset].valid && global[w][u.gset].tag == u.gtag) {
+				u.global_hit = true;
+				u.global_way = w;
+				break;
+			}
+		}
+		if (!u.global_hit)
+			u.global_way = alloc_way (u.gset);
+		u.global_prediction = global[u.global_way][u.gset].ctr >> 1;
+
+		u.direction_prediction (u.global_hit ? u.global_prediction : local_pred);
+		return &u;
+	}
+
+	void update (branch_update *pu, bool taken, unsigned int target) {
+		(void) target;
+		if (!(bi.br_flags & BR_CONDITIONAL)) return;
+
+		pm_update *uu = (pm_update *) pu;
+		sat_update (bimodal[uu->bimodal_index], taken);
+
+		int way = uu->global_way;
+		global[way][uu->gset].valid = 1;
+		global[way][uu->gset].tag = uu->gtag;
+		sat_update (global[way][uu->gset].ctr, taken);
+		touch_lru (uu->gset, way);
+
+		history = ((history << 1) | (taken ? 1 : 0)) & ((1u << HIST_BITS) - 1);
+	}
+};
+
 //
 // Complete Pentium M branch predictors for extra credit
 // This class implements the complete Pentium M branch prediction units. 
