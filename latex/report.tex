@@ -14,30 +14,35 @@
 
 \section{How to run}
 
-From \texttt{src}, build the driver and score one trace. The program prints
-one line, the mispredictions per thousand instructions for that file.
+The handout builds under \texttt{cbp2-infrastructure-v2}.
+In this repository that folder is the root.
+\texttt{src/}, \texttt{traces/}, and \texttt{run} are here.
+Each block below starts from that root.
+
+Build and score one trace. The program prints one line, the mispredictions
+per thousand instructions.
 
 \begin{verbatim}
-cd src
-make
-./predict ../traces/164.gzip/gzip.trace.bz2
+make -C src
+./src/predict traces/164.gzip/gzip.trace.bz2
 \end{verbatim}
 
-Score every trace from the repository root. \texttt{run} calls
-\texttt{src/predict} on each file under \texttt{traces}. Build first.
-The trace reader decompresses each file with \texttt{/usr/bin/bzip2 -dc}.
+Score every trace. \texttt{run} calls \texttt{./src/predict}. The trace
+reader decompresses each file with \texttt{/usr/bin/bzip2 -dc}.
 
 \begin{verbatim}
+make -C src
 csh ./run traces
 \end{verbatim}
 
-Check the Appendix~B worksheet from \texttt{src}. A match ends with
+Check the Appendix~B worksheet. The checker looks for
+\texttt{../examples/appendix-b} from the current directory, so it is run
+from \texttt{src}. A match ends with
 \texttt{PASS: 22 / 22 rows match the csv tables}.
 
 \begin{verbatim}
-cd src
-make appendix_b_check
-./appendix_b_check
+make -C src appendix_b_check
+cd src && ./appendix_b_check
 \end{verbatim}
 
 \let\oldsection\section
@@ -47,9 +52,9 @@ make appendix_b_check
 
 The submitted predictor guesses whether a conditional branch is taken.
 \texttt{my\_predictor.h} has two copies of the same idea.
-\texttt{pm\_predictor} is the tiny Appendix~B example: 16 local counters,
+\texttt{toy\_pm\_predictor} is the Appendix~B worksheet: 16 local counters,
 4 global sets, 2 ways, and 4 bits of history. The checker uses only that
-copy. \texttt{scaled\_pm\_predictor} is the copy \texttt{predict.cc} runs on
+copy. \texttt{pm\_predictor} is the copy \texttt{predict.cc} runs on
 the traces. It is the Pentium~M size: a local table, a history of recent
 outcomes, and a tagged global table with 4 ways.
 
@@ -71,14 +76,39 @@ For each conditional branch the large predictor does three things.
         is used.
 \end{enumerate}
 
-The global table is updated only when it is useful. The local counter is
-trained when the global table misses. A new global entry is created only
-when that local guess was wrong, in an empty slot or in place of the
-least-recently-used one. A replaced counter starts at 2 if the branch was
-taken and at 1 if it was not. If a global hit is wrong and the local guess
-was right, that entry is deleted.
+\subsection{Changes from the worksheet}
 
-The trace tables start at zero. The worksheet copy keeps the Appendix~B
+\texttt{toy\_pm\_predictor} keeps the Appendix~B sizes, the two-way marker
+that records which way was used last, and an update of both tables on every
+conditional branch. \texttt{pm\_predictor} keeps the same prediction rule: a
+global hit wins, and a miss uses the local counter. The index is the same
+XOR split, widened from 4 bits to 15. Three things change.
+
+\begin{itemize}
+  \item \textbf{Tables.}
+  \begin{itemize}
+    \item 16 local counters become 4,096, indexed by \texttt{PC[11:0]}.
+    \item 4 global sets become 512, and 2 ways become 4. The tag grows from
+          2 bits to 6.
+    \item 4 bits of history become 15. \texttt{PC[16:2]} is XORed with that
+          history. Bits \texttt{[14:6]} select the set and bits
+          \texttt{[5:0]} are the tag.
+  \end{itemize}
+  \item \textbf{Replacement.} Each of the four ways stores a rank. Rank 0 is
+        the newest. A miss fills an empty way, or the way with the highest
+        rank.
+  \item \textbf{Training.}
+  \begin{itemize}
+    \item The local counter is trained when the global table misses.
+    \item A global entry is allocated only when that local guess was wrong.
+          A replaced counter starts at 2 if the branch was taken and at 1 if
+          it was not.
+    \item A global hit that is wrong, while the local guess was right, clears
+          that entry.
+  \end{itemize}
+\end{itemize}
+
+Trace counters start at zero. The worksheet copy keeps the Appendix~B
 starting values, so its counters still match the example.
 
 \subsection{What was skipped}
@@ -93,7 +123,7 @@ Appendix~B walks through 22 branches at \texttt{0x44}, \texttt{0x6C}, and
 \texttt{0x90}. The expected history, index, local counters, and global
 entries are in \texttt{hybrid.csv}, \texttt{local.csv}, and
 \texttt{global.csv}. \texttt{appendix\_b\_check} feeds each address and
-outcome to \texttt{pm\_predictor} and compares every saved field.
+outcome to \texttt{toy\_pm\_predictor} and compares every saved field.
 
 That run matches 22 of 22 rows. The large predictor is a different width, so
 it is not checked against those rows.
@@ -105,7 +135,7 @@ mispredictions per thousand instructions (MPKI): 6.311 means about six
 wrong direction guesses in every thousand instructions. ``Always taken''
 guesses that every conditional branch is taken. ``gshare'' is the
 32,768-entry predictor shipped with the simulator. ``Hybrid'' is
-\texttt{scaled\_pm\_predictor}.
+\texttt{pm\_predictor}.
 
 \begin{table}[ht]
 \centering
@@ -212,8 +242,8 @@ silicon delay.
 
 \section{Conclusion}
 
-The small predictor matches the Appendix~B example on all 22 rows. The
-trace predictor is the Pentium~M hybrid at full size: 4,096 local counters,
+The worksheet predictor matches the Appendix~B example on all 22 rows. The
+trace predictor, \texttt{pm\_predictor}, is the Pentium~M hybrid at full size: 4,096 local counters,
 15 bits of outcome history, and 512 sets of four tagged counters. On the
 traces it cuts the always-taken miss rate from 86.311 to 6.311~MPKI, level
 with gshare at 6.306, in 2.13 times less storage. On the Banias estimate

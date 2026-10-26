@@ -57,14 +57,14 @@ int main (int argc, char **argv) {
 	FILE *gl = open_csv (dir, "global.csv");
 	if (!hy || !lo || !gl) return 1;
 
-	pm_predictor p;
+	toy_pm_predictor p;
 	int rows_ok = 0;
 	char line[512];
 
 	for (int step = 1; step <= 22; step++) {
 		fail_row = 0;
 		int hstep, taken, set, hit;
-		int lstep, index, ctr[pm_predictor::BIMODAL_SIZE];
+		int lstep, index, ctr[toy_pm_predictor::BIMODAL_SIZE];
 		char pcbuf[32], ghr_s[16], xor_s[16], tag_s[16];
 		char local_s[8], glob_s[8], final_s[8], pred_s[8];
 
@@ -106,11 +106,11 @@ int main (int argc, char **argv) {
 		expect_eq (step, "global", u->global_prediction ? 1 : 0, parse_tn (glob_s));
 		expect_eq (step, "final", up->direction_prediction () ? 1 : 0, parse_tn (final_s));
 
-		for (int k = 0; k < pm_predictor::BIMODAL_SIZE; k++)
+		for (int k = 0; k < toy_pm_predictor::BIMODAL_SIZE; k++)
 			expect_eq (step, "bimodal", p.bimodal[k], ctr[k]);
 
-		for (int s = 0; s < pm_predictor::GSETS; s++) {
-			for (int w = 0; w < pm_predictor::GWAYS; w++) {
+		for (int s = 0; s < toy_pm_predictor::GSETS; s++) {
+			for (int w = 0; w < toy_pm_predictor::GWAYS; w++) {
 				int gstep, gset, gway, valid, counter, lru;
 				char gtag[16];
 				if (!next_line (gl, line, sizeof line, "global.csv")) return 1;
@@ -120,7 +120,7 @@ int main (int argc, char **argv) {
 					fprintf (stderr, "global.csv: bad row at step %d\n", step);
 					return 1;
 				}
-				pm_predictor::gentry &got = p.global[w][s];
+				toy_pm_predictor::gentry &got = p.global[w][s];
 				if (got.valid != valid || got.tag != parse_bits (gtag) ||
 				    got.ctr != counter || got.lru != lru) {
 					fprintf (stderr,

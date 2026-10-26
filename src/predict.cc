@@ -29,7 +29,7 @@ int main (int argc, char *argv[]) {
 
 	// initialize competitor's branch prediction code
 
-	branch_predictor *p = new scaled_pm_predictor ();
+	branch_predictor *p = new pm_predictor ();
 
 	// some statistics to keep, currently just for conditional branches
 

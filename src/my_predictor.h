@@ -50,10 +50,9 @@ public:
 };
 
 //
-// Pentium M hybrid branch predictors
-// This class implements a simple hybrid branch predictor based on the Pentium M branch outcome prediction units. 
-// Instead of implementing the complete Pentium M branch outcome predictors, the class below implements a hybrid 
-// predictor that combines a bimodal predictor and a global predictor. 
+// Shared prediction record for the hybrid predictors.
+// toy_pm_predictor is the Appendix B worksheet. pm_predictor is the
+// Pentium M sized predictor that predict.cc runs. 
 class pm_update : public branch_update {
 public:
 	unsigned int bimodal_index;
@@ -69,7 +68,7 @@ public:
 
 // Appendix B simplified hybrid: 16-entry bimodal + 2-way tagged global.
 // PC bits used for prediction are address[5:2] (4 bits). GHR is 4 bits.
-class pm_predictor : public branch_predictor {
+class toy_pm_predictor : public branch_predictor {
 public:
 	enum { BIMODAL_SIZE = 16, GSETS = 4, GWAYS = 2, HIST_BITS = 4 };
 
@@ -110,7 +109,7 @@ public:
 		return global[0][set].lru ? 0 : 1;
 	}
 
-	pm_predictor (void) : history(0) {
+	toy_pm_predictor (void) : history(0) {
 		for (int i = 0; i < BIMODAL_SIZE; i++)
 			bimodal[i] = i & 3;
 		for (int s = 0; s < GSETS; s++) {
@@ -178,12 +177,12 @@ public:
 
 };
 
-// Trace predictor. Same index split as pm_predictor, at the Pentium M
+// Trace predictor. Same index split as toy_pm_predictor, at the Pentium M
 // table sizes: 4096 bimodal counters, 512 sets, 4 ways, 15-bit outcome
 // history. address[16:2] is XORed with that history; bits [14:6] select
 // the set and bits [5:0] are the tag. A global entry is allocated only
 // when the bimodal prediction was wrong.
-class scaled_pm_predictor : public branch_predictor {
+class pm_predictor : public branch_predictor {
 public:
 	enum { BIMODAL_SIZE = 4096, GSETS = 512, GWAYS = 4, HIST_BITS = 15, TAG_BITS = 6 };
 
@@ -229,7 +228,7 @@ public:
 		return victim;
 	}
 
-	scaled_pm_predictor (void) : history(0) {
+	pm_predictor (void) : history(0) {
 		memset (bimodal, 0, sizeof (bimodal));
 		memset (global, 0, sizeof (global));
 		for (int s = 0; s < GSETS; s++)
