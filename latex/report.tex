@@ -3,6 +3,7 @@
 \usepackage[margin=1in]{geometry}
 \usepackage{booktabs}
 \usepackage{siunitx}
+\usepackage{amsmath}
 
 \title{Assignment 1: Branch Predictor Implementation}
 \author{Course 6385}
@@ -11,117 +12,212 @@
 \begin{document}
 \maketitle
 
+\section{How to run}
+
+From \texttt{src}, build the driver and score one trace. The program prints
+one line, the mispredictions per thousand instructions for that file.
+
+\begin{verbatim}
+cd src
+make
+./predict ../traces/164.gzip/gzip.trace.bz2
+\end{verbatim}
+
+Score every trace from the repository root. \texttt{run} calls
+\texttt{src/predict} on each file under \texttt{traces}. Build first.
+The trace reader decompresses each file with \texttt{/usr/bin/bzip2 -dc}.
+
+\begin{verbatim}
+csh ./run traces
+\end{verbatim}
+
+Check the Appendix~B worksheet from \texttt{src}. A match ends with
+\texttt{PASS: 22 / 22 rows match the csv tables}.
+
+\begin{verbatim}
+cd src
+make appendix_b_check
+./appendix_b_check
+\end{verbatim}
+
+\let\oldsection\section
+\renewcommand{\section}{\clearpage\oldsection}
+
 \section{What was implemented}
 
-Two classes in \texttt{my\_predictor.h} implement the same hybrid. \texttt{pm\_predictor} is the Appendix~B worksheet: 16
-bimodal counters, four global sets, and a 4-bit history. It exists so the
-worked example can be checked cell for cell. \texttt{scaled\_pm\_predictor}
-is the predictor \texttt{predict.cc} runs on the traces. It uses the Pentium~M
-table sizes and the same selection rule. The assignment allows two ways
-instead of the Pentium~M's four.
+The submitted predictor guesses whether a conditional branch is taken.
+\texttt{my\_predictor.h} has two copies of the same idea.
+\texttt{pm\_predictor} is the tiny Appendix~B example: 16 local counters,
+4 global sets, 2 ways, and 4 bits of history. The checker uses only that
+copy. \texttt{scaled\_pm\_predictor} is the copy \texttt{predict.cc} runs on
+the traces. It is the Pentium~M size: a local table, a history of recent
+outcomes, and a tagged global table with 4 ways.
 
-A conditional branch in \texttt{scaled\_pm\_predictor} is predicted as follows.
+For each conditional branch the large predictor does three things.
 
-\begin{itemize}
-  \item The bimodal table has 4096 two-bit saturating counters. The index is
-        \texttt{PC[11:0]}. The prediction is the counter's high bit.
-  \item A 15-bit history register records the outcome of each conditional
-        branch. It is shifted after the branch resolves, and the new taken or
-        not-taken bit is inserted. This is the stand-in for the path
-        information register, which the assignment does not require.
-  \item \texttt{PC[16:2]} is XORed with those 15 history bits, the same split
-        as Appendix~B at a wider width. Bits \texttt{[14:6]} of the result
-        select one of 512 sets. Bits \texttt{[5:0]} are the tag.
-  \item Each set has two ways. A way hits when it is valid and the tag
-        matches. On a hit the global counter's high bit is the prediction.
-        On a miss the bimodal prediction is used.
-  \item Both counters are updated. A miss fills an invalid way, or replaces
-        the least-recently-used way if both are valid. The chosen way becomes
-        most recently used.
-\end{itemize}
+\begin{enumerate}
+  \item \textbf{Local guess.} A table of 4096 two-bit counters is indexed by
+        \texttt{PC[11:0]}. Each counter counts how often that address was
+        taken. Values 0 and 1 predict not taken. Values 2 and 3 predict
+        taken. The counter stops at 0 and at 3.
+  \item \textbf{Recent outcomes.} A 15-bit register shifts in a 1 when the
+        branch was taken and a 0 when it was not. This replaces the Pentium~M
+        path register, which the assignment does not require.
+  \item \textbf{Global guess.} \texttt{PC[16:2]} is XORed with those 15
+        history bits, the same split as Appendix~B with a wider address.
+        Bits \texttt{[14:6]} pick one of 512 sets. Bits \texttt{[5:0]} are a
+        tag. Each set holds four entries. If one entry is valid and the tag
+        matches, its counter makes the prediction. Otherwise the local guess
+        is used.
+\end{enumerate}
 
-Counters saturate at 0 and 3 and start at 0. The worksheet class keeps the
-Appendix~B initial state: bimodal counter \(i\) starts at \(i \bmod 4\), and
-the global ways start with the valid bits clear and the counter and LRU
-values shown in that example.
+The global table is updated only when it is useful. The local counter is
+trained when the global table misses. A new global entry is created only
+when that local guess was wrong, in an empty slot or in place of the
+least-recently-used one. A replaced counter starts at 2 if the branch was
+taken and at 1 if it was not. If a global hit is wrong and the local guess
+was right, that entry is deleted.
 
-\section{What was left out}
+The trace tables start at zero. The worksheet copy keeps the Appendix~B
+starting values, so its counters still match the example.
 
-Loop prediction, the branch target buffer, and the path information register
-are not implemented. Unconditional branches are predicted taken and do not
-update the tables. Target addresses are not predicted; the simulator still
-reports direction mispredictions per kilo-instruction, which is the metric
-for this assignment.
+\subsection{What was skipped}
+
+The loop predictor, the branch target buffer, and the path register are
+omitted. Unconditional branches are predicted taken and do not change the
+tables. Branch targets are not predicted. The score is direction misses only.
 
 \section{Check against Appendix~B}
 
-Appendix~B gives 22 conditional branches (\texttt{b1} at \texttt{0x44},
-\texttt{b2} at \texttt{0x6C}, \texttt{b3} at \texttt{0x90}) and the expected
-state of both tables. Those tables are stored as \texttt{hybrid.csv}, \texttt{local.csv}, and
-\texttt{global.csv}. The program
-\texttt{appendix\_b\_check} feeds each program counter and outcome to
-\texttt{pm\_predictor} and compares the history register, the XOR index, the
-16 bimodal counters, and every global valid bit, tag, counter, and LRU bit.
+Appendix~B walks through 22 branches at \texttt{0x44}, \texttt{0x6C}, and
+\texttt{0x90}. The expected history, index, local counters, and global
+entries are in \texttt{hybrid.csv}, \texttt{local.csv}, and
+\texttt{global.csv}. \texttt{appendix\_b\_check} feeds each address and
+outcome to \texttt{pm\_predictor} and compares every saved field.
 
-The run on \texttt{pm\_predictor} reports 22 of 22 rows matching.
-\texttt{scaled\_pm\_predictor} is not compared to those tables. Its index
-width is not the 4-bit index in the example.
+That run matches 22 of 22 rows. The large predictor is a different width, so
+it is not checked against those rows.
 
 \section{Trace results}
 
-The predictor was built with \texttt{make} in
-\texttt{src} and run on the 20 CBP2 traces. Each trace
-is 100 million instructions. MPKI is \(1000 \times (\textit{direction
-mispredictions}) / 10^{8}\), counted only for conditional branches. The
-always-taken column is the same traces run with the original stub, which
-predicted every conditional branch taken.
+Each of the 20 traces is 100 million instructions. The score is
+mispredictions per thousand instructions (MPKI): 6.311 means about six
+wrong direction guesses in every thousand instructions. ``Always taken''
+guesses that every conditional branch is taken. ``gshare'' is the
+32,768-entry predictor shipped with the simulator. ``Hybrid'' is
+\texttt{scaled\_pm\_predictor}.
 
 \begin{table}[ht]
 \centering
-\begin{tabular}{l S[table-format=3.3] S[table-format=2.3]}
+\begin{tabular}{l S[table-format=3.3] S[table-format=2.3] S[table-format=2.3]}
 \toprule
-{Trace} & {Always taken} & {Hybrid} \\
+{Trace} & {Always taken} & {gshare} & {Hybrid} \\
 \midrule
-164.gzip      & 70.025 & 13.868 \\
-175.vpr       & 85.312 & 17.028 \\
-176.gcc       & 86.071 & 20.021 \\
-181.mcf       & 102.497 & 21.085 \\
-186.crafty    & 48.651 & 10.957 \\
-197.parser    & 78.421 & 12.861 \\
-201.compress  & 76.983 & 9.230 \\
-202.jess      & 92.343 & 2.461 \\
-205.raytrace  & 109.506 & 3.975 \\
-209.db        & 91.451 & 5.583 \\
-213.javac     & 109.644 & 3.328 \\
-222.mpegaudio & 110.339 & 3.273 \\
-227.mtrt      & 112.022 & 3.898 \\
-228.jack      & 77.958 & 5.793 \\
-252.eon       & 24.226 & 4.074 \\
-253.perlbmk   & 66.833 & 8.127 \\
-254.gap       & 75.950 & 6.829 \\
-255.vortex    & 70.524 & 2.100 \\
-256.bzip2     & 178.257 & 0.191 \\
-300.twolf     & 59.221 & 24.558 \\
+164.gzip      & 70.025 & 12.473 & 14.543 \\
+175.vpr       & 85.312 & 13.415 & 13.693 \\
+176.gcc       & 86.071 & 11.254 & 9.126 \\
+181.mcf       & 102.497 & 15.837 & 16.920 \\
+186.crafty    & 48.651 & 5.837 & 5.129 \\
+197.parser    & 78.421 & 10.008 & 8.995 \\
+201.compress  & 76.983 & 7.831 & 8.978 \\
+202.jess      & 92.343 & 1.562 & 1.148 \\
+205.raytrace  & 109.506 & 2.756 & 2.139 \\
+209.db        & 91.451 & 3.909 & 3.824 \\
+213.javac     & 109.644 & 2.267 & 2.382 \\
+222.mpegaudio & 110.339 & 2.188 & 2.400 \\
+227.mtrt      & 112.022 & 2.657 & 2.314 \\
+228.jack      & 77.958 & 3.033 & 2.538 \\
+252.eon       & 24.226 & 1.807 & 1.730 \\
+253.perlbmk   & 66.833 & 2.554 & 1.905 \\
+254.gap       & 75.950 & 3.926 & 4.554 \\
+255.vortex    & 70.524 & 1.222 & 0.854 \\
+256.bzip2     & 178.257 & 0.094 & 0.071 \\
+300.twolf     & 59.221 & 21.489 & 22.973 \\
 \midrule
-{Average}     & 86.311 & 8.962 \\
+{Average}     & 86.311 & 6.306 & 6.311 \\
 \bottomrule
 \end{tabular}
-\caption{Direction mispredictions per kilo-instruction. The hybrid column is \texttt{scaled\_pm\_predictor}.}
+\caption{Wrong direction guesses per thousand instructions.}
 \end{table}
 
-The hybrid predictor is lower than always-taken on every trace. The average
-falls from 86.311 to 8.962 MPKI. bzip2, vortex, and jess fall the furthest.
-gcc, mcf, and twolf stay above 20. Those traces have more distinct branches
-than a 512-set, 2-way table can separate, so some global hits still come from
-a counter trained by a different branch.
+Always taken averages 86.311. The hybrid averages 6.311, and gshare averages
+6.306. The two accurate predictors differ by 0.005. gcc and perlbmk are
+better on the hybrid. gzip and twolf are better on gshare.
+
+The accuracy matches because the global table is reserved for branches the
+local table gets wrong. A stored global guess therefore does not replace a
+local guess that was already right.
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{l r r}
+\toprule
+& gshare & Hybrid \\
+\midrule
+Stored bits  & 65,551 & 30,735 \\
+Physical rows & 256 & 64 and 64 \\
+Average MPKI & 6.306  & 6.311 \\
+\bottomrule
+\end{tabular}
+\caption{Size of the two predictors. Physical rows are after the bits are folded into a near-square array. One row is read.}
+\end{table}
+
+gshare stores 32,768 two-bit counters and a 15-bit history, 65,551 bits.
+The hybrid stores 4,096 local counters (8,192 bits), 2,048 global entries
+with a 6-bit tag, a 2-bit counter, and a valid bit (18,432 bits), a 2-bit
+age on each entry (4,096 bits), and the same 15-bit history. That is
+30,735 bits. gshare holds 2.13 times as much state.
+
+A wrong guess costs the same in either design, because the miss rates match.
+Area and idle power follow the stored bits, so both are 2.13 times lower
+for the hybrid.
+
+Lookup delay is estimated for a Pentium~M Banias, the 130\,nm part at
+1.3\,GHz. One cycle is 769\,ps. The fanout-of-4 inverter delay used here is
+25.2\,ps, so a cycle is about 30 FO4.\footnote{Banias clock and FO4 delay
+from the Stanford CPU DB. The gate delays below are taken from a 130\,nm
+measurement of a 64-row memory: a 6-bit decoder plus wordline is 5 FO4, and
+the bitline plus sense amplifier is 2.4 FO4.}
+The memories are not one entry per row. The same bits are folded so the
+array is near a square, and the address bits that no longer pick a row
+become a column multiplexer. gshare's 64\,Kbit array is 256 rows by 256
+columns, with a 128-to-1 column mux. The local table is 64 rows by 128
+columns, with a 64-to-1 mux. Each global way is its own 64-row memory, and
+the four ways are read together.
+
+The terms, in FO4 delays, are a parallel XOR \(T_{\oplus}=2\), a decoder
+\(T_{\mathrm{dec}}(n)=5+(n-6)\) for an \(n\)-bit row address, a bitline and
+sense amplifier \(T_{\mathrm{bit}}(R)=2.4\times R/64\), a column mux
+\(T_{\mathrm{col}}(k)=\frac{1}{2}\log_2 k\), four 6-bit tag comparisons
+\(T_{\mathrm{cmp}}=3\), a way mux \(T_{\mathrm{way}}=2\), and the final
+local-or-global mux \(T_{\mathrm{sel}}=2\). One row is driven.
+\(T_{\mathrm{bit}}\) grows with the number of rows because the idle rows
+still load the bitline.
+\begin{align}
+L_{\mathrm{gshare}} &= T_{\oplus}+T_{\mathrm{dec}}(8)+T_{\mathrm{bit}}(256)+T_{\mathrm{col}}(128) \nonumber\\
+&= 2+7+9.6+3.5 = 22.1~\text{FO4}, \\
+L_{\mathrm{local}} &= T_{\mathrm{dec}}(6)+T_{\mathrm{bit}}(64)+T_{\mathrm{col}}(64) \nonumber\\
+&= 5+2.4+3 = 10.4~\text{FO4}, \\
+L_{\mathrm{global}} &= T_{\oplus}+T_{\mathrm{dec}}(6)+T_{\mathrm{bit}}(64)+T_{\mathrm{col}}(8)+T_{\mathrm{cmp}}+T_{\mathrm{way}} \nonumber\\
+&= 2+5+2.4+1.5+3+2 = 15.9~\text{FO4}, \\
+L_{\mathrm{hybrid}} &= \max(L_{\mathrm{local}},L_{\mathrm{global}})+T_{\mathrm{sel}} \nonumber\\
+&= 15.9+2 = 17.9~\text{FO4}.
+\end{align}
+At 25.2\,ps per FO4 this is 557\,ps for gshare and 451\,ps for the hybrid.
+Both fit in the 769\,ps cycle. The hybrid lookup is 4.2 FO4, about 106\,ps,
+shorter. The difference is the bitline: 9.6 FO4 at 256 rows against 2.4 FO4
+at 64 rows. The tag compare and the two muxes add 7 FO4, which does not use
+up that whole saving. This is a sum of those assumptions, not a measured
+silicon delay.
 
 \section{Conclusion}
 
-\texttt{pm\_predictor} is the Appendix~B hybrid and matches the worked example
-on all 22 rows. The trace predictor, \texttt{scaled\_pm\_predictor}, is that
-same machine at Pentium~M sizes: a 4096-entry bimodal table, a 15-bit outcome
-history, and a 512-set 2-way tagged global table. A global hit overrides the
-bimodal prediction. On the CBP2 traces the average falls from 86.311
-to 8.962~MPKI.
+The small predictor matches the Appendix~B example on all 22 rows. The
+trace predictor is the Pentium~M hybrid at full size: 4,096 local counters,
+15 bits of outcome history, and 512 sets of four tagged counters. On the
+traces it cuts the always-taken miss rate from 86.311 to 6.311~MPKI, level
+with gshare at 6.306, in 2.13 times less storage. On the Banias estimate
+the lookup is 17.9 FO4 against 22.1 FO4 for gshare, about 106\,ps inside the
+same cycle.
 
 \end{document}

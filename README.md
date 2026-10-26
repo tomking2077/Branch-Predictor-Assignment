@@ -1,6 +1,6 @@
 # Branch Predictor Assignment
 
-The predictor is built on the infrastructure from the Championship Branch Prediction competition. The September 14, 2006 update of that tree dropped the extra traces and added `src/compress`, the engine that pre-processed the traces shipped here. `doc/index.html` documents the trace format, the driver, and how a predictor class is called. The work for this assignment is on top of that. `src/my_predictor.h` has two hybrid predictors. `pm_predictor` is the Appendix B worksheet, and `appendix_b_check.cc` checks it against the worked example. `scaled_pm_predictor` is the same rule at Pentium M sizes (4096 bimodal counters, 512 sets, 2 ways, 15-bit history). `predict.cc` runs that class on the traces.
+The predictor is built on the infrastructure from the Championship Branch Prediction competition. The September 14, 2006 update of that tree dropped the extra traces and added `src/compress`, the engine that pre-processed the traces shipped here. `doc/index.html` documents the trace format, the driver, and how a predictor class is called. The work for this assignment is on top of that. `src/my_predictor.h` has two hybrid predictors. `pm_predictor` is the Appendix B worksheet, and `appendix_b_check.cc` checks it against the worked example. `scaled_pm_predictor` is the same index split at Pentium M sizes (4096 bimodal counters, 512 sets, 4 ways, 15-bit history) and allocates a global entry only when the bimodal prediction was wrong. `predict.cc` runs that class on the traces.
 
 ## Directory structure
 

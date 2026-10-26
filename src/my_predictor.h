@@ -64,6 +64,7 @@ public:
 	bool global_hit;
 	int global_way;
 	bool global_prediction;
+	bool bimodal_prediction;
 };
 
 // Appendix B simplified hybrid: 16-entry bimodal + 2-way tagged global.
@@ -177,21 +178,20 @@ public:
 
 };
 
-// Trace predictor. Same selection and update rules as pm_predictor, at the
-// Pentium M table sizes. A 15-bit outcome history stands in for the path
-// register. address[16:2] is XORed with that history; bits [14:6] of the
-// result select one of 512 sets and bits [5:0] are the tag. The bimodal
-// table has 4096 counters indexed by address[11:0]. Two ways, as allowed
-// in place of the Pentium M's four.
+// Trace predictor. Same index split as pm_predictor, at the Pentium M
+// table sizes: 4096 bimodal counters, 512 sets, 4 ways, 15-bit outcome
+// history. address[16:2] is XORed with that history; bits [14:6] select
+// the set and bits [5:0] are the tag. A global entry is allocated only
+// when the bimodal prediction was wrong.
 class scaled_pm_predictor : public branch_predictor {
 public:
-	enum { BIMODAL_SIZE = 4096, GSETS = 512, GWAYS = 2, HIST_BITS = 15, TAG_BITS = 6 };
+	enum { BIMODAL_SIZE = 4096, GSETS = 512, GWAYS = 4, HIST_BITS = 15, TAG_BITS = 6 };
 
 	struct gentry {
 		unsigned char valid;
 		unsigned char tag;
 		unsigned char ctr;
-		unsigned char lru;	// 0 = MRU, 1 = LRU
+		unsigned char lru;	// 0 = MRU, larger = older
 	};
 
 	pm_update u;
@@ -209,20 +209,32 @@ public:
 	}
 
 	void touch_lru (unsigned int set, int way) {
+		unsigned char rank = global[way][set].lru;
+		for (int w = 0; w < GWAYS; w++) {
+			if (global[w][set].lru < rank)
+				global[w][set].lru++;
+		}
 		global[way][set].lru = 0;
-		global[way ^ 1][set].lru = 1;
 	}
 
 	int alloc_way (unsigned int set) {
 		for (int w = 0; w < GWAYS; w++) {
 			if (!global[w][set].valid) return w;
 		}
-		return global[0][set].lru ? 0 : 1;
+		int victim = 0;
+		for (int w = 1; w < GWAYS; w++) {
+			if (global[w][set].lru > global[victim][set].lru)
+				victim = w;
+		}
+		return victim;
 	}
 
 	scaled_pm_predictor (void) : history(0) {
 		memset (bimodal, 0, sizeof (bimodal));
 		memset (global, 0, sizeof (global));
+		for (int s = 0; s < GSETS; s++)
+			for (int w = 0; w < GWAYS; w++)
+				global[w][s].lru = w;
 	}
 
 	branch_update *predict (branch_info & b) {
@@ -244,6 +256,7 @@ public:
 		u.gtag = u.xor_bits & ((1u << TAG_BITS) - 1);
 
 		bool local_pred = bimodal[u.bimodal_index] >> 1;
+		u.bimodal_prediction = local_pred;
 
 		for (int w = 0; w < GWAYS; w++) {
 			if (global[w][u.gset].valid && global[w][u.gset].tag == u.gtag) {
@@ -265,13 +278,29 @@ public:
 		if (!(bi.br_flags & BR_CONDITIONAL)) return;
 
 		pm_update *uu = (pm_update *) pu;
-		sat_update (bimodal[uu->bimodal_index], taken);
-
 		int way = uu->global_way;
-		global[way][uu->gset].valid = 1;
-		global[way][uu->gset].tag = uu->gtag;
-		sat_update (global[way][uu->gset].ctr, taken);
-		touch_lru (uu->gset, way);
+		gentry &e = global[way][uu->gset];
+		bool bimodal_right = uu->bimodal_prediction == taken;
+
+		if (!uu->global_hit)
+			sat_update (bimodal[uu->bimodal_index], taken);
+
+		if (uu->global_hit) {
+			if (uu->global_prediction != taken && bimodal_right) {
+				e.valid = 0;
+			} else {
+				sat_update (e.ctr, taken);
+				touch_lru (uu->gset, way);
+			}
+		} else if (!bimodal_right) {
+			if (e.valid)
+				e.ctr = taken ? 2 : 1;
+			else
+				sat_update (e.ctr, taken);
+			e.valid = 1;
+			e.tag = uu->gtag;
+			touch_lru (uu->gset, way);
+		}
 
 		history = ((history << 1) | (taken ? 1 : 0)) & ((1u << HIST_BITS) - 1);
 	}
